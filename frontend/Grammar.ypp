@@ -1,0 +1,162 @@
+%{
+#include <cstdio>
+#include <iostream>
+#include <vector>
+#include "input.h"
+#include <cstring>
+#include "../src/Utilities.h"
+using namespace std;
+
+extern int yylex();
+extern int yyparse();
+extern FILE *yyin;
+
+void yyerror(const char *s) { printf("ERROR: %s\n", s); }
+
+Input* inputData = new Input();
+
+%}
+
+%union {
+	int ival;
+	double fval;
+	string* sval;
+	Input* input;
+	vector<Mode*>* modes;
+	I_Polyhedron* poly;
+	PartitioningMethod* partition;
+	Mode* mode;
+	vector<double>* vecNum;
+	vector<vector<double>* >* vecVecNum;
+	vector<string*>* vecID;
+}
+
+%token <ival> T_INT
+%token <fval> T_FLOAT
+%token <sval> T_ID
+
+%token T_EQUAL T_COLON T_SEMI_COLON T_COMMA T_STAR
+%token T_LEFT_BRACKET T_RIGHT_BRACKET
+%token T_DIMENSION T_MODES T_SAFE T_DISTURBANCE T_PARTITION_MODES
+
+%type <input> grammar
+%type <mode> mode
+%type <poly> poly
+%type <partition> partition
+%type <modes> modes
+%type <vecNum> vecNum
+%type <vecVecNum> vecVecNum
+%type <vecID> vecID
+%type <fval> num
+
+%start grammar
+
+%%
+
+grammar:
+	T_DIMENSION T_EQUAL T_INT T_MODES T_COLON modes
+	T_SAFE T_COLON poly T_DISTURBANCE T_COLON
+	poly T_PARTITION_MODES T_COLON partition
+				{
+				inputData->numOfDimensions = $3;
+				inputData->modes = $6;
+				inputData->safeRegion = $9;
+				inputData->disturbance = $12;
+				inputData->partition = $15;
+                inputData->processProblem();
+				};
+modes: 
+    mode modes 	{
+				$2->push_back($1);
+				$$ = new vector<Mode*>(*($2));
+				}
+	| mode 			{
+				$$ = new vector<Mode*>();
+				$$->push_back($1);
+				};
+poly:
+	T_LEFT_BRACKET vecVecNum
+	T_RIGHT_BRACKET
+	T_LEFT_BRACKET vecNum
+	T_RIGHT_BRACKET 	{
+                		$$ = new I_Polyhedron();
+				$$->coefs = $2;
+				$$->bounds = $5;
+				};
+partition:
+    T_LEFT_BRACKET
+    vecID
+    T_RIGHT_BRACKET
+                {
+                $$ = new PartitioningMethod();
+		$$->pgpModesNames = $2;
+		};
+mode:
+	T_ID T_EQUAL 
+	T_LEFT_BRACKET 
+	vecVecNum
+    T_RIGHT_BRACKET
+	T_ID T_EQUAL 
+	T_LEFT_BRACKET 
+	vecNum
+	T_RIGHT_BRACKET
+				{
+				$$->name = new string(*$1);
+				$$->A = $4;
+				$$->B = $9;
+				};
+vecNum:
+	vecNum num 		{
+				$1->push_back($2);
+				$$ = new vector<double>(*($1));
+				}
+	| num 			{
+				$$ = new vector<double>();
+				$$->push_back($1);
+				};
+vecID:
+    vecID T_ID 	{
+				$1->push_back($2);
+				$$ = new vector<string*>(*($1));
+				}
+	| T_ID 			{
+				$$ = new vector<string*>();
+				$$->push_back($1);
+				};
+vecVecNum:
+    vecVecNum vecNum T_SEMI_COLON
+	 		{
+				$1->push_back($2);
+				$$ = new vector<vector<double> *>(*($1));
+				}
+	| vecNum T_SEMI_COLON	{
+				$$ = new vector<vector<double>* >();
+				$$->push_back($1);
+				};
+num:
+	T_INT 			{
+				$$ = $1;
+				}
+	| T_FLOAT 		{
+				$$ = $1;
+				};
+%%
+
+int main(int argc, char* argv[]){
+    if (argc != 3){
+        cout << "Two arguments are needed (input file and output file)" << endl;
+        exit(-1);
+    }
+    string inFileName = argv[1];
+    string outFileName= argv[2];
+    FILE *inFile = fopen(inFileName.c_str(), "r");
+	if (!inFile) {
+		cout << "Can't open "+inFileName << endl;
+		exit(-1);
+	}
+	yyin = inFile;
+    Utilities::outputFolder = outFileName;
+    do {
+		yyparse();
+	} while (!feof(yyin));
+}
